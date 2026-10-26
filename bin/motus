@@ -1,0 +1,2 @@
+#!/bin/sh
+exec ruby /home/cyril/Work/jeux/motus-kawaii/motus.rb "$@"
