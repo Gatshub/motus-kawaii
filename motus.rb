@@ -141,7 +141,13 @@ class Game
     end
 
     case key
-    when "q", "ctrl+c"
+    when "q"
+      # lettre en pleine partie ; quitter est réservé au menu
+      if @over
+        return [self, Bubbletea.quit]
+      end
+      type_letter("q")
+    when "ctrl+c"
       return [self, Bubbletea.quit]
     when "esc"
       @menu = true
@@ -445,10 +451,10 @@ class Game
         b << DEF_STYLE.render(@definition) << "\n"
       end
       b << "\n"
-      b << HELP_STYLE.render("[n] rejouer · [m] menu · [q] quitter")
+      b << HELP_STYLE.render("[n] rejouer · esc menu · q quitter")
     else
       b << MSG_STYLE.render(@message) << "\n"
-      b << HELP_STYLE.render("←→ bouger · backspace · entrée · esc menu · q quitter")
+      b << HELP_STYLE.render("←→ bouger · backspace · entrée · esc menu")
     end
     b << "\n"
     b
