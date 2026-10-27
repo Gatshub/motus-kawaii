@@ -152,7 +152,7 @@ class Game
     when "right"
       @cursor = next_free(@cursor, +1)
     when "backspace"
-      clear_free_before(@cursor)
+      backspace
     when "enter", "space", " "
       submit
     else
@@ -173,10 +173,17 @@ class Game
     c.between?(0, @len - 1) ? c : from
   end
 
-  def clear_free_before(cursor)
-    c = cursor - 1
+  def backspace
+    c = @cursor
+    # cas 1 : la case SOUS le curseur est libre et remplie → l'effacer
+    if c < @len && !@locked[c] && @current[c]
+      @current[c] = nil
+      return
+    end
+    # cas 2 : reculer jusqu'à la dernière case libre remplie
+    c -= 1
     while c >= 0
-      unless @locked[c]
+      if !@locked[c] && @current[c]
         @current[c] = nil
         @cursor = c
         return
@@ -306,12 +313,37 @@ class Game
     @menu ? center(menu_view) : center(game_view)
   end
 
+  # largeur de rendu approximative : les blocs East Asian Wide/Fullwidth
+  # comptent 2 colonnes (kaomojis, ♡, ✗...) ; le reste 1.
+  WIDE_RANGES = [
+    [0x1100, 0x115F], [0x2E80, 0x303E], [0x3041, 0x33FF], [0x3400, 0x4DBF],
+    [0x4E00, 0x9FFF], [0xA000, 0xA4CF], [0xAC00, 0xD7A3], [0xF900, 0xFAFF],
+    [0xFE30, 0xFE4F], [0xFF00, 0xFF60], [0xFFE0, 0xFFE6],
+    [0x1F300, 0x1F64F], [0x1F900, 0x1F9FF], [0x1F680, 0x1F6FF]
+  ].freeze
+
+  def char_width(ch)
+    cp = ch.ord
+    return 0 if cp.zero?
+    return 2 if WIDE_RANGES.any? { |lo, hi| cp >= lo && cp <= hi }
+    1
+  end
+
+  def render_width(l)
+    plain = l.gsub(/\e\[[0-9;]*m/, "")
+    plain.chars.sum { |ch| char_width(ch) }
+  end
+
   def center(content)
     lines = content.chomp.split("\n")
-    visible = ->(l) { l.gsub(/\e\[[0-9;]*m/, "").length }
-    max_w = lines.map { |l| visible.call(l) }.max || 0
-    inner = [(@width - max_w) / 2, 0].max
-    pad = " " * inner
+    max_w = lines.map { |l| render_width(l) }.max || 0
+    lines = lines.map do |l|
+      lw = render_width(l)
+      inner = [(max_w - lw) / 2, 0].max
+      " " * inner + l
+    end
+    outer = [(@width - max_w) / 2, 0].max
+    pad = " " * outer
     lines = lines.map { |l| pad + l }
     vpad = [(@height - lines.size) / 2, 0].max
     ([""] * vpad + lines).join("\n") + "\n"
@@ -335,6 +367,14 @@ class Game
     b
   end
 
+  # grille dessinée : cases de 5 colonnes, bordures reliées
+  CELL_W = 5
+
+  def table_line(left, mid, right, row_styles)
+    left + row_styles.map { |s| "─" * CELL_W + mid }.join[0..-2] +
+      "─" * CELL_W + right
+  end
+
   def game_view
     b = +""
     b << TITLE_STYLE.render(" ♡  M O T U S  ♡ ")
@@ -342,37 +382,53 @@ class Game
     b << PLAIN_S.render("mot de #{@len} lettres · essai #{@tries.size + 1}/#{MAX_TRIES}")
     b << "\n\n"
 
-    # grille complète : 6 lignes × N lettres, toujours visible
+    # construire les 6 lignes : chaque cellule = [char, style]
+    all_rows = []
     MAX_TRIES.times do |row|
       played = row < @tries.size
       is_current = row == @tries.size && !@over
-      line = (0...@len).map do |col|
+      cells = (0...@len).map do |col|
         if played
           c = @tries[row][0][col]
           st = @states[row][col]
-          case st
-          when :good then GOOD_STYLE.render(c)
-          when :present then PRES_STYLE.render(c)
-          else MISS_STYLE.render(c)
-          end
+          style = case st
+                  when :good then GOOD_STYLE
+                  when :present then PRES_STYLE
+                  else MISS_STYLE
+                  end
+          [c, style]
         elsif is_current
-          ch = @current[col] || (col.zero? ? @secret[0] : nil)
-          ch = @secret[0] if col.zero?
-          if @locked[col]
-            GIVEN_STYLE.render(ch)
+          ch = @current[col]
+          locked = @locked[col]
+          if locked
+            [ch, GIVEN_STYLE]
           elsif ch
-            col == @cursor ? CURSOR_STYLE.render(ch) : TYPING_STYLE.render(ch)
+            style = col == @cursor ? CURSOR_STYLE : TYPING_STYLE
+            [ch, style]
           elsif col == @cursor
-            CURSOR_STYLE.render("_")
+            ["_", CURSOR_STYLE]
           else
-            MUTED_S.render("·")
+            ["·", PLAIN_S]
           end
         else
-          MUTED_S.render("·")
+          ["·", PLAIN_S]
         end
-      end.join
-      b << line << "\n"
+      end
+      all_rows << cells
     end
+
+    # rendu du tableau avec bordures reliées
+    top = "┌" + (["─" * CELL_W] * @len).join("┬") + "┐"
+    sep = "├" + (["─" * CELL_W] * @len).join("┼") + "┤"
+    bot = "└" + (["─" * CELL_W] * @len).join("┴") + "┘"
+
+    b << top << "\n"
+    all_rows.each_with_index do |cells, i|
+      line = "│" + cells.map { |c, st| st.render(c.center(CELL_W)) }.join("│") + "│"
+      b << line << "\n"
+      b << sep << "\n" unless i == all_rows.size - 1
+    end
+    b << bot << "\n"
 
     b << "\n"
     if @over
@@ -387,7 +443,7 @@ class Game
       b << HELP_STYLE.render("[n] rejouer · [m] menu · [q] quitter")
     else
       b << MSG_STYLE.render(@message) << "\n"
-      b << HELP_STYLE.render("lettres · ←→ bouger · backspace · entrée valider · m menu · q quitter")
+      b << HELP_STYLE.render("←→ bouger · backspace · entrée · m menu · q quitter")
     end
     b << "\n"
     b
