@@ -97,7 +97,7 @@ class Game
     @current = Array.new(@len) { |i| i.zero? ? @secret[0] : nil }
     @locked = Array.new(@len, false)
     @locked[0] = true
-    @cursor = next_free(0, +1)
+    @cursor = first_free
     @revealed = 0
     @over = false
     @won = false
@@ -146,11 +146,16 @@ class Game
     when "esc"
       @menu = true
     when "n"
-      start(@level_idx) if @over
+      # relancer une partie seulement quand elle est finie ; sinon c'est une lettre
+      if @over
+        start(@level_idx)
+      else
+        type_letter("n")
+      end
     when "left"
-      @cursor = next_free(@cursor, -1)
+      @cursor = prev_free_before(@cursor)
     when "right"
-      @cursor = next_free(@cursor, +1)
+      @cursor = next_free_after(@cursor)
     when "backspace"
       backspace
     when "enter", "space", " "
@@ -161,29 +166,35 @@ class Game
     [self, nil]
   end
 
-  # ── saisie : le curseur saute les cases correctes reportées ──
+  # ── saisie : le curseur ne se pose jamais sur une case verrouillée ──
 
-  def next_free(from, dir)
-    c = from
-    loop do
-      c += dir
-      break if c < 0 || c >= @len
-      break unless @locked[c]
-    end
-    c.between?(0, @len - 1) ? c : from
+  def free?(i)
+    i.between?(0, @len - 1) && !@locked[i]
+  end
+
+  def first_free
+    (0...@len).find { |i| free?(i) } || @len
+  end
+
+  def next_free_after(from)
+    ((from + 1)...@len).find { |i| free?(i) } || @len
+  end
+
+  def prev_free_before(from)
+    from.downto(0) { |i| return i if free?(i) }
+    first_free
   end
 
   def backspace
-    c = @cursor
-    # cas 1 : la case SOUS le curseur est libre et remplie → l'effacer
-    if c < @len && !@locked[c] && @current[c]
-      @current[c] = nil
+    # si la case sous le curseur est libre et remplie → l'effacer
+    if free?(@cursor) && @current[@cursor]
+      @current[@cursor] = nil
       return
     end
-    # cas 2 : reculer jusqu'à la dernière case libre remplie
-    c -= 1
+    # sinon reculer à la dernière case libre remplie
+    c = @cursor - 1
     while c >= 0
-      if !@locked[c] && @current[c]
+      if free?(c) && @current[c]
         @current[c] = nil
         @cursor = c
         return
@@ -195,7 +206,7 @@ class Game
   def type_letter(key)
     return if @over || @cursor >= @len || @locked[@cursor]
     @current[@cursor] = key
-    @cursor = next_free(@cursor, +1)
+    @cursor = next_free_after(@cursor)
     @message = "Entrée pour valider ♪"
   end
 
@@ -278,7 +289,7 @@ class Game
     if word == @secret
       @over = true
       @won = true
-      @message = "GAGNÉ ! #{MAX_TRIES - @tries.size + 1} essai(s) d'avance ☆*:.｡.o(≧▽≦)o.｡.:*☆"
+      @message = "GAGNÉ ! #{MAX_TRIES - @tries.size} essai(s) d'avance ☆*:.｡.o(≧▽≦)o.｡.:*☆"
       fetch_definition(@secret)
       return
     end
@@ -291,19 +302,13 @@ class Game
       return
     end
 
-    # report des lettres bien placées + révélation d'une lettre de plus
+    # report des lettres bien placées sur la ligne suivante (comme à la TV) :
+    # UNIQUEMENT les lettres correctes, pas de révélation supplémentaire
     @locked = fb.map { |f| f == :good }
     @current = Array.new(@len) do |i|
       fb[i] == :good ? @secret[i] : nil
     end
-    if @revealed < @len - 1
-      @revealed += 1
-      i = @revealed
-      unless @current[i]
-        @current[i] = @secret[i]
-      end
-    end
-    @cursor = next_free(0, +1)
+    @cursor = first_free
     @message = "Raté ! Une lettre en plus... ♪"
   end
 
@@ -443,7 +448,7 @@ class Game
       b << HELP_STYLE.render("[n] rejouer · [m] menu · [q] quitter")
     else
       b << MSG_STYLE.render(@message) << "\n"
-      b << HELP_STYLE.render("←→ bouger · backspace · entrée · m menu · q quitter")
+      b << HELP_STYLE.render("←→ bouger · backspace · entrée · esc menu · q quitter")
     end
     b << "\n"
     b
