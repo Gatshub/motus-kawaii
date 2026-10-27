@@ -15,8 +15,8 @@ require "open-uri"
 # ─── Couleurs adaptatives ────────────────────────────────────────────────────
 
 ACCENT = Lipgloss::AdaptiveColor.new(light: "#D6488C", dark: "#FF9EC4")
-GOOD   = Lipgloss::AdaptiveColor.new(light: "#C41E3D", dark: "#FF7B8A")
-PRES   = Lipgloss::AdaptiveColor.new(light: "#2456A8", dark: "#7EB1FF")
+GOOD   = Lipgloss::AdaptiveColor.new(light: "#2456A8", dark: "#7EB1FF")  # bien placé : bleu
+PRES   = Lipgloss::AdaptiveColor.new(light: "#C41E3D", dark: "#FF7B8A")  # mal placé : rouge
 MISS   = Lipgloss::AdaptiveColor.new(light: "#B0A3B5", dark: "#6E5F73")
 GIVEN_C = Lipgloss::AdaptiveColor.new(light: "#6E5A75", dark: "#C9BBD1")
 MUTED  = Lipgloss::AdaptiveColor.new(light: "#8A7D8F", dark: "#9A8CA0")
