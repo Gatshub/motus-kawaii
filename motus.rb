@@ -187,7 +187,9 @@ class Game
   end
 
   def prev_free_before(from)
-    from.downto(0) { |i| return i if free?(i) }
+    # exclure la case courante (← doit reculer) ; borner la sentinelle @len
+    start = [from, @len - 1].min - 1
+    start.downto(0) { |i| return i if free?(i) }
     first_free
   end
 
